@@ -15,13 +15,14 @@ Load< LitColorTextureProgram > lit_color_texture_program(LoadTagEarly, []() -> L
 	lit_color_texture_program_pipeline.OBJECT_TO_LIGHT_mat4x3 = ret->OBJECT_TO_LIGHT_mat4x3;
 	lit_color_texture_program_pipeline.NORMAL_TO_LIGHT_mat3 = ret->NORMAL_TO_LIGHT_mat3;
 
-	/* This will be used later if/when we build a light loop into the Scene:
+	// This will be used later if/when we build a light loop into the Scene:
 	lit_color_texture_program_pipeline.LIGHT_TYPE_int = ret->LIGHT_TYPE_int;
 	lit_color_texture_program_pipeline.LIGHT_LOCATION_vec3 = ret->LIGHT_LOCATION_vec3;
-	lit_color_texture_program_pipeline.LIGHT_DIRECTION_vec3 = ret->LIGHT_DIRECTION_vec3;
+	// lit_color_texture_program_pipeline.LIGHT_DIRECTION_vec3 = ret->LIGHT_DIRECTION_vec3;
 	lit_color_texture_program_pipeline.LIGHT_ENERGY_vec3 = ret->LIGHT_ENERGY_vec3;
-	lit_color_texture_program_pipeline.LIGHT_CUTOFF_float = ret->LIGHT_CUTOFF_float;
-	*/
+	// lit_color_texture_program_pipeline.LIGHT_CUTOFF_float = ret->LIGHT_CUTOFF_float;
+	lit_color_texture_program_pipeline.ITIME_float = ret->ITIME_float;
+	
 
 	//make a 1-pixel white texture to bind by default:
 	GLuint tex;
@@ -75,6 +76,7 @@ LitColorTextureProgram::LitColorTextureProgram() {
 		"uniform vec3 LIGHT_DIRECTION;\n"
 		"uniform vec3 LIGHT_ENERGY;\n"
 		"uniform float LIGHT_CUTOFF;\n"
+		"uniform float iTime;\n"
 		"in vec3 position;\n"
 		"in vec3 normal;\n"
 		"in vec4 color;\n"
@@ -83,27 +85,45 @@ LitColorTextureProgram::LitColorTextureProgram() {
 		"void main() {\n"
 		"	vec3 n = normalize(normal);\n"
 		"	vec3 e;\n"
-		"	if (LIGHT_TYPE == 0) { //point light \n"
-		"		vec3 l = (LIGHT_LOCATION - position);\n"
-		"		float dis2 = dot(l,l);\n"
-		"		l = normalize(l);\n"
-		"		float nl = max(0.0, dot(n, l)) / max(1.0, dis2);\n"
-		"		e = nl * LIGHT_ENERGY;\n"
-		"	} else if (LIGHT_TYPE == 1) { //hemi light \n"
-		"		e = (dot(n,-LIGHT_DIRECTION) * 0.5 + 0.5) * LIGHT_ENERGY;\n"
-		"	} else if (LIGHT_TYPE == 2) { //spot light \n"
-		"		vec3 l = (LIGHT_LOCATION - position);\n"
-		"		float dis2 = dot(l,l);\n"
-		"		l = normalize(l);\n"
-		"		float nl = max(0.0, dot(n, l)) / max(1.0, dis2);\n"
-		"		float c = dot(l,-LIGHT_DIRECTION);\n"
-		"		nl *= smoothstep(LIGHT_CUTOFF,mix(LIGHT_CUTOFF,1.0,0.1), c);\n"
-		"		e = nl * LIGHT_ENERGY;\n"
-		"	} else { //(LIGHT_TYPE == 3) //directional light \n"
-		"		e = max(0.0, dot(n,-LIGHT_DIRECTION)) * LIGHT_ENERGY;\n"
-		"	}\n"
+		"	vec3 l = (LIGHT_LOCATION - position);\n"
+		"	float dis2 = dot(l,l);\n"
+		"	l = normalize(l);\n"
+		"	float nl = max(0.0, dot(n, l)) / max(1., dis2 * 20.);\n"
+		"	e = nl * LIGHT_ENERGY;\n"
 		"	vec4 albedo = texture(TEX, texCoord) * color;\n"
-		"	fragColor = vec4(e*albedo.rgb, albedo.a);\n"
+		"	vec2 uv = position.xz*3.;\n"
+		"	float r = 3.*dis2;\n"
+		"	float theta = atan(uv.y, uv.x);\n"
+		"	float blobSDF = 0.03*sin(iTime)+r + 0.05*cos(iTime)*sin(5.*theta+iTime)+0.1*cos(7.*theta+0.7*iTime) + 1.;\n"
+		"	float smallBlob = step(1.185, mix(blobSDF, r+1.,.8-r));\n"
+		"	float bigBlob = 1.- step(1.87, blobSDF);\n"
+		"	blobSDF = step(1.42, blobSDF);\n"
+			
+		"	float circ1 = sqrt(pow(uv.x - 0.95*sin(0.1*iTime-2.0), 2.) + pow(uv.y - 0.95*cos(0.1*iTime-2.0), 2.));\n"
+		"	float circ2 = sqrt(pow(uv.x - 0.90*sin(0.1*iTime-0.2), 2.) + pow(uv.y - 0.90*cos(0.1*iTime-0.2), 2.));\n"
+		"	float circ3 = sqrt(pow(uv.x - 0.90*sin(0.1*iTime+0.6), 2.) + pow(uv.y - 0.90*cos(0.1*iTime+0.6), 2.));\n"
+		"	float circ4 = sqrt(pow(uv.x - 1.05*sin(0.1*iTime+0.75), 2.) + pow(uv.y - 1.05*cos(0.1*iTime+0.75), 2.));\n"
+		"	float circ5 = sqrt(pow(uv.x - 1.10*sin(0.1*iTime-2.3), 2.) + pow(uv.y - 1.10*cos(0.1*iTime-2.3), 2.));\n"
+		"	float circ6 = sqrt(pow(uv.x - 0.69*sin(0.1*iTime-3.1), 2.) + pow(uv.y - 0.69*cos(0.1*iTime-3.1), 2.));\n"
+		"	float circ7 = sqrt(pow(uv.x - 0.64*sin(0.1*iTime-1.), 2.) + pow(uv.y - 0.64*cos(0.1*iTime-1.), 2.));\n"
+		"	blobSDF = min(blobSDF, step(0.135, circ1));\n"
+		"	blobSDF = min(blobSDF, step(0.075, circ2));\n"
+		"	blobSDF = min(blobSDF, step(0.085, circ3));\n"
+		"	blobSDF = min(blobSDF, step(0.045, circ4));\n"
+		"	blobSDF = min(blobSDF, step(0.045, circ5));\n"
+		"	smallBlob = min(smallBlob, step(0.065, circ6));\n"
+		"	smallBlob = min(smallBlob, step(0.065, circ7));\n"
+			
+		"	blobSDF = 1.-blobSDF;\n"
+		"	smallBlob = 1.-smallBlob;\n"
+		"	vec4 smallColor = vec4(albedo.r-0.3*nl, albedo.g, 0.7*albedo.b+0.3*nl, 1.) * smallBlob;\n"
+		"	vec4 medColor = vec4(1.*albedo.r-0.3*nl, 0.4*albedo.g-0.5*nl, 0.6*albedo.b+0.3*nl, 1.);\n"
+		"	vec4 bigColor = vec4(0.4*albedo.r-0.3*nl, 0.1*albedo.g+0.4*nl, 0.9*albedo.b, 1.);\n"
+		"	// Output to screen\n"
+		"	fragColor = mix(mix(medColor*blobSDF, smallColor, smallBlob), bigColor * bigBlob, 1.-blobSDF);\n"
+		"	fragColor = blobSDF > 0. && bigBlob < 1. ? bigColor : fragColor;\n"
+		"	fragColor = smallBlob > 0. && blobSDF < 1. ? medColor : fragColor;\n"
+		"	fragColor = vec4(fragColor.rgb, fragColor.a);\n"
 		"}\n"
 	);
 	//As you can see above, adjacent strings in C/C++ are concatenated.
@@ -126,6 +146,7 @@ LitColorTextureProgram::LitColorTextureProgram() {
 	LIGHT_ENERGY_vec3 = glGetUniformLocation(program, "LIGHT_ENERGY");
 	LIGHT_CUTOFF_float = glGetUniformLocation(program, "LIGHT_CUTOFF");
 
+	ITIME_float = glGetUniformLocation(program, "iTime");
 
 	GLuint TEX_sampler2D = glGetUniformLocation(program, "TEX");
 

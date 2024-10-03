@@ -83,7 +83,7 @@ glm::mat4 Scene::Camera::make_projection() const {
 void Scene::draw(Camera const &camera) const {
 	assert(camera.transform);
 	glm::mat4 world_to_clip = camera.make_projection() * glm::mat4(camera.transform->make_world_to_local());
-	glm::mat4x3 world_to_light = glm::mat4x3(1.0f);
+	glm::mat4x3 world_to_light = cameras.back().transform->make_world_to_local();
 	draw(world_to_clip, world_to_light);
 }
 
@@ -133,6 +133,10 @@ void Scene::draw(glm::mat4 const &world_to_clip, glm::mat4x3 const &world_to_lig
 			glm::mat3 normal_to_light = glm::inverse(glm::transpose(glm::mat3(object_to_light)));
 			glUniformMatrix3fv(pipeline.NORMAL_TO_LIGHT_mat3, 1, GL_FALSE, glm::value_ptr(normal_to_light));
 		}
+
+		// if (pipeline.LIGHT_TYPE_int != -1U) {
+		// 	glUniform1i(pipeline.LIGHT_TYPE_int, )
+		// }
 
 		//set any requested custom uniforms:
 		if (pipeline.set_uniforms) pipeline.set_uniforms();
